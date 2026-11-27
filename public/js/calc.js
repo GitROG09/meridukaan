@@ -88,7 +88,7 @@
 
   // Buying cost of the goods that were sold. Uses the unit cost captured at sale time
   // (entry.unitCost) so later price changes never rewrite history.
-  function costOfSales(entries, items) {
+  function rawCostOfSales(entries, items) {
     var byId = indexItems(items);
     var total = 0;
     (entries || []).forEach(function (e) {
@@ -97,7 +97,11 @@
       var unitCost = e.unitCost != null ? toNum(e.unitCost) : (item ? toNum(item.buy) : 0);
       total += toNum(e.qty) * unitCost;
     });
-    return round2(total);
+    return total;
+  }
+
+  function costOfSales(entries, items) {
+    return round2(rawCostOfSales(entries, items));
   }
 
   // Profit = sales - buying cost of items sold - expenses.
@@ -115,6 +119,55 @@
     };
   }
 
+  // Allocate expenses in paise by sales value, using largest remainders for exact totals.
+  function itemProfits(entries, items) {
+    var groups = {};
+    (entries || []).forEach(function (e) {
+      if (e.type !== 'sale' || !e.itemId) return;
+      if (!groups[e.itemId]) groups[e.itemId] = [];
+      groups[e.itemId].push(e);
+    });
+    var rows = Object.keys(groups).map(function (id) {
+      var sales = totalSales(groups[id]);
+      return { itemId: id, sales: sales, cost: rawCostOfSales(groups[id], items), expenses: 0, profit: 0 };
+    });
+    var costPaise = Math.round(costOfSales(entries, items) * 100);
+    var allocatedCost = 0;
+    rows.forEach(function (row, index) {
+      var exact = row.cost * 100;
+      row.cost = Math.floor(exact);
+      row.costRemainder = exact - row.cost;
+      row.order = index;
+      allocatedCost += row.cost;
+    });
+    rows.slice().sort(function (a, b) { return b.costRemainder - a.costRemainder || a.order - b.order; })
+      .slice(0, costPaise - allocatedCost).forEach(function (row) { row.cost++; });
+    var totalSalesValue = totalSales(entries);
+    var expensePaise = Math.round(totalExpenses(entries) * 100);
+    if (totalSalesValue > 0 && rows.length) {
+      var allocated = 0;
+      rows.forEach(function (row, index) {
+        var exact = expensePaise * row.sales / totalSalesValue;
+        var paise = Math.floor(exact);
+        row.expenses = paise;
+        row.remainder = exact - paise;
+        row.order = index;
+        allocated += paise;
+      });
+      rows.slice().sort(function (a, b) { return b.remainder - a.remainder || a.order - b.order; })
+        .slice(0, expensePaise - allocated).forEach(function (row) { row.expenses++; });
+    }
+    rows.forEach(function (row) {
+      row.cost = row.cost / 100;
+      row.expenses = row.expenses / 100;
+      row.profit = round2(row.sales - row.cost - row.expenses);
+      delete row.remainder;
+      delete row.costRemainder;
+      delete row.order;
+    });
+    return rows;
+  }
+
   // Current stock = opening stock + purchased qty - sold qty. Service items are not stocked.
   function stockLevels(items, entries) {
     var levels = {};
@@ -125,9 +178,14 @@
       if (!Object.prototype.hasOwnProperty.call(levels, e.itemId)) return;
       if (e.type === 'purchase') levels[e.itemId] += toNum(e.qty);
       else if (e.type === 'sale') levels[e.itemId] -= toNum(e.qty);
+      else if (e.type === 'adjustment') levels[e.itemId] += toNum(e.qty);
     });
     Object.keys(levels).forEach(function (k) { levels[k] = round3(levels[k]); });
     return levels;
+  }
+
+  function stockAdjustment(current, counted) {
+    return round3(toNum(counted) - toNum(current));
   }
 
   function isLowStock(item, qty) {
@@ -199,7 +257,9 @@
     totalPurchases: totalPurchases,
     costOfSales: costOfSales,
     profitSummary: profitSummary,
+    itemProfits: itemProfits,
     stockLevels: stockLevels,
+    stockAdjustment: stockAdjustment,
     isLowStock: isLowStock,
     lowStockItems: lowStockItems,
     expectedAmount: expectedAmount,

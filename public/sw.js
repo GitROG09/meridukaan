@@ -1,5 +1,5 @@
 /* MeriDukaan service worker: caches the app shell so it opens without internet. */
-var CACHE = 'meridukaan-v2';
+var CACHE = 'meridukaan-v3';
 var ASSETS = [
   './', './index.html', './css/style.css', './config.js', './manifest.json', './icon.svg',
   './js/calc.js', './js/data.js', './js/parser.js', './js/sync.js', './js/app.js'

@@ -12,7 +12,7 @@
   function summary(snapshot) {
     var last = snapshot.entries.slice(-3).map(function (entry) {
       var label = entry.itemId || entry.category || entry.type;
-      return label + ': ₹' + entry.amount;
+      return label + (entry.type === 'adjustment' ? ': stock ' + entry.qty : ': ₹' + entry.amount);
     }).join(', ');
     return snapshot.entries.length + ' entries' + (last ? ' (latest: ' + last + ')' : '');
   }
@@ -22,11 +22,13 @@
     document.getElementById('syncConflictDetails').textContent =
       'This device: ' + summary(local) + '. Account: ' + summary(remote.snapshot) + '.';
     document.getElementById('syncConflict').hidden = false;
+    document.getElementById('syncAlert').hidden = false;
     status('Sync paused: choose which version to keep.');
   }
   function hideConflict() {
     conflict = null;
     document.getElementById('syncConflict').hidden = true;
+    document.getElementById('syncAlert').hidden = true;
   }
   async function request(url, options) {
     var response = await fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, options || {}));
@@ -82,6 +84,7 @@
         active = false;
         document.getElementById('syncForm').hidden = false;
         document.getElementById('syncLogout').hidden = true;
+        hooks.onSessionChange();
         status('Session expired. Sign in again to sync.');
       } else if (error.status === 409) {
         status('Another device changed the account. Checking versions…');
@@ -109,6 +112,9 @@
       var user = await request(register ? '/api/register' : '/api/login',
         Object.assign({ method: 'POST' }, body({ username: username, password: password })));
       document.getElementById('syncPassword').value = '';
+      document.getElementById('syncPassword').type = 'password';
+      document.getElementById('togglePassword').setAttribute('aria-pressed', 'false');
+      window.MeriDukaan.renderPasswordToggle();
       active = true;
       if (!meta || meta.username !== user.username) {
         meta = { username: user.username, revision: null, dirty: true };
@@ -117,6 +123,7 @@
       document.getElementById('syncForm').hidden = true;
       document.getElementById('syncLogout').hidden = false;
       hideConflict();
+      hooks.onAuthenticated();
       await sync();
     } catch (error) { status(error.message); }
   }
@@ -159,6 +166,13 @@
   window.ShopSync = {
     init: function (callbacks) {
       hooks = callbacks;
+      document.getElementById('togglePassword').addEventListener('click', function () {
+        var password = document.getElementById('syncPassword');
+        var visible = password.type === 'password';
+        password.type = visible ? 'text' : 'password';
+        this.setAttribute('aria-pressed', visible ? 'true' : 'false');
+        window.MeriDukaan.renderPasswordToggle();
+      });
       document.getElementById('syncForm').addEventListener('submit', function (e) { e.preventDefault(); login(false); });
       document.getElementById('syncRegister').addEventListener('click', function () { login(true); });
       document.getElementById('syncKeepLocal').addEventListener('click', chooseLocal);
@@ -170,6 +184,7 @@
           hideConflict();
           document.getElementById('syncForm').hidden = false;
           document.getElementById('syncLogout').hidden = true;
+          hooks.onSessionChange();
           status('Signed out. Shop data remains on this device.');
         } catch (error) { status(error.message); }
       });
@@ -186,6 +201,7 @@
       if (!meta) return;
       try { meta.dirty = true; saveMeta(); schedule(); }
       catch (error) { status('Could not save sync status. ' + error.message); }
-    }
+    },
+    isActive: function () { return active; }
   };
 })();

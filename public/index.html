@@ -12,7 +12,15 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="top">
+  <section id="welcomeScreen" class="welcome" aria-labelledby="welcomeTitle" hidden>
+    <div class="welcome-card">
+      <h1 id="welcomeTitle">MeriDukaan</h1>
+      <p id="welcomeMessage">Sign in to sync, or continue with data on this device.</p>
+      <div id="welcomeSync"></div>
+      <button id="continueLocal" type="button" class="btn">Continue without signing in</button>
+    </div>
+  </section>
+  <header id="appHeader" class="top">
     <h1 class="logo">Meri<span>Dukaan</span></h1>
     <span id="offlineBadge" class="badge offline" hidden>● Offline - phone mein save</span>
     <label class="lang">
@@ -26,7 +34,8 @@
     </label>
   </header>
 
-  <main>
+  <main id="appMain">
+    <a id="syncAlert" class="sync-alert" href="#syncConflict" hidden>Sync paused: review the account and phone versions.</a>
     <section class="voice" aria-label="Bolkar entry">
       <button id="mic" class="mic" type="button" aria-label="Bolne ke liye dabaiye">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a.9.9 0 1 0-1.8 0 4.2 4.2 0 0 1-8.4 0 .9.9 0 1 0-1.8 0 6 6 0 0 0 5.1 5.9V20H8.5a.9.9 0 0 0 0 1.8h7a.9.9 0 0 0 0-1.8h-2.6v-2.6a6 6 0 0 0 5.1-5.9z"/></svg>
@@ -90,14 +99,23 @@
         <button id="resetBtn" type="button" class="btn danger">Sample data wapas</button>
       </div>
       <p id="aiStatus" class="muted small"></p>
-      <section id="syncSection" aria-label="Account and sync">
+      <div id="syncHome"><section id="syncSection" aria-label="Account and sync">
         <h3 id="syncTitle">Account and sync</h3>
         <p id="syncStatus" role="status">Local data only. Sign in to sync.</p>
         <form id="syncForm" class="sync-form">
           <label id="syncUserLabel" for="syncUser">Username</label>
           <input id="syncUser" autocomplete="username" minlength="3" maxlength="32" required>
           <label id="syncPasswordLabel" for="syncPassword">Password (at least 10 characters)</label>
-          <input id="syncPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+          <div class="password-field">
+            <input id="syncPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+            <button type="button" id="togglePassword" class="password-toggle" aria-controls="syncPassword" aria-pressed="false" aria-label="Show password" title="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+                <path class="password-slash" d="M4 4l16 16"></path>
+              </svg>
+            </button>
+          </div>
           <div class="row">
             <button type="submit" id="syncLogin" class="btn">Sign in</button>
             <button type="button" id="syncRegister" class="btn">Create account</button>
@@ -112,7 +130,7 @@
             <button type="button" id="syncKeepRemote" class="btn">Keep account version</button>
           </div>
         </div>
-      </section>
+      </section></div>
     </section>
   </main>
 

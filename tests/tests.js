@@ -317,6 +317,39 @@ test('Indian grouping', function () {
 });
 
 section('Profit and stock calculations');
+test('item profit allocates expenses by sales and preserves paise', function () {
+  var input = [
+    { type: 'sale', itemId: 'rice', qty: 1, amount: 100, unitCost: 40 },
+    { type: 'sale', itemId: 'biscuit', qty: 1, amount: 200, unitCost: 8 },
+    { type: 'expense', amount: 1 }
+  ];
+  assert.deepStrictEqual(Calc.itemProfits(input, ITEMS), [
+    { itemId: 'rice', sales: 100, cost: 40, expenses: 0.33, profit: 59.67 },
+    { itemId: 'biscuit', sales: 200, cost: 8, expenses: 0.67, profit: 191.33 }
+  ]);
+  assert.strictEqual(Calc.itemProfits([{ type: 'expense', amount: 10 }], ITEMS).length, 0);
+});
+test('item buying costs reconcile with total cost when fractional quantities need rounding', function () {
+  var input = [
+    { type: 'sale', itemId: 'rice', qty: 0.001, amount: 1, unitCost: 4 },
+    { type: 'sale', itemId: 'biscuit', qty: 0.001, amount: 1, unitCost: 4 }
+  ];
+  var rows = Calc.itemProfits(input, ITEMS);
+  assert.strictEqual(rows.reduce(function (sum, row) { return sum + row.cost; }, 0), Calc.costOfSales(input, ITEMS));
+  assert.strictEqual(Calc.round2(rows.reduce(function (sum, row) { return sum + row.profit; }, 0)),
+    Calc.profitSummary(input, ITEMS).profit);
+});
+test('stock corrections and later purchases and sales affect stock and can be undone', function () {
+  var items = [{ id: 'x', opening: 10 }];
+  var changes = [
+    { type: 'sale', itemId: 'x', qty: 3 },
+    { type: 'adjustment', itemId: 'x', qty: Calc.stockAdjustment(7, 4) },
+    { type: 'purchase', itemId: 'x', qty: 5 }
+  ];
+  assert.strictEqual(Calc.stockLevels(items, changes).x, 9);
+  assert.strictEqual(Calc.stockLevels(items, changes.slice(0, 1)).x, 7);
+  assert.strictEqual(Calc.stockAdjustment(4, 10), 6);
+});
 var T = new Date(2026, 10, 27, 12, 0, 0).getTime();
 var Y = new Date(2026, 10, 26, 12, 0, 0).getTime();
 var entries = [

@@ -138,6 +138,8 @@
   function entrySpeech(e) {
     if (e.type === 'expense') return tr('kharcha ', 'खर्च ', 'expense ') + catSay(e.category) + ', ' + rupees(e.amount);
     var it = itemById(e.itemId);
+    if (e.type === 'adjustment') return tr('Stock badla: ', 'साठा बदलला: ', 'Stock adjustment: ') +
+      (it ? itemSay(it) : e.itemId) + ', ' + num(e.qty) + ' ' + unitSay(it);
     var type = e.type === 'sale' ? tr('bikri', 'विक्री', 'sale') : tr('maal aaya', 'माल खरेदी', 'stock purchase');
     return num(e.qty) + ' ' + unitSay(it) + ' ' + (it ? itemSay(it) : e.itemId) + ', ' + rupees(e.amount) + ', ' + type;
   }
@@ -599,6 +601,10 @@
   var rec = null;
   var listening = false;
   var silenceTimer = null;
+  var restartTimer = null;
+  var speechText = '';
+  var speechInterim = '';
+  var speechConfidence = 1;
 
   function armSilence() {
     clearTimeout(silenceTimer);
@@ -608,7 +614,6 @@
 
   function onSilence() {
     stopListening(true);
-    say(tr('Boliye, main sun raha hoon.', 'बोला, मी ऐकत आहे.', 'Please speak; I am listening.'));
   }
 
   function setListeningUi(on) {
@@ -636,43 +641,46 @@
       return;
     }
     if (window.speechSynthesis) speechSynthesis.cancel();
+    speechText = '';
+    speechInterim = '';
+    speechConfidence = 1;
+    setListeningUi(true);
+    $('transcript').textContent = '…';
+    armSilence();
     rec = new SR();
     rec.lang = db.settings.lang;
     rec.interimResults = true;
-    rec.continuous = false;
+    rec.continuous = true;
     rec.maxAlternatives = 3;
-    var gotFinal = false;
+    var current = rec;
 
-    rec.onstart = function () { setListeningUi(true); armSilence(); $('transcript').textContent = '…'; };
     rec.onresult = function (ev) {
+      if (!listening || rec !== current) return;
       armSilence();
       var interim = '';
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var res = ev.results[i];
         if (res.isFinal) {
-          gotFinal = true;
           var alt = res[0];
           // Some Android builds report 0 when confidence is unknown; treat that as "not reported".
           var conf = typeof alt.confidence === 'number' && alt.confidence > 0 ? alt.confidence : 1;
-          $('transcript').textContent = alt.transcript + (conf < MIN_CONFIDENCE ? ' (?)' : '');
-          stopListening(false);
-          if (conf < MIN_CONFIDENCE) recognitionFailed();
-          else {
-            $('noiseHint').classList.remove('strong');
-            handle(alt.transcript);
-          }
-          return;
+          speechConfidence = Math.min(speechConfidence, conf);
+          speechText += (speechText ? ' ' : '') + alt.transcript.trim();
+        } else {
+          interim += res[0].transcript;
         }
-        interim += res[0].transcript;
       }
-      if (interim) $('transcript').textContent = interim;
+      speechInterim = interim;
+      $('transcript').textContent = (speechText + ' ' + interim).trim() || '…';
     };
     rec.onerror = function (e) {
-      clearSilence();
+      if (!listening || rec !== current) return;
       var err = e && e.error;
-      if (err === 'no-speech') { if (!gotFinal) say(tr('Boliye, main sun raha hoon.', 'बोला, मी ऐकत आहे.', 'Please speak; I am listening.')); }
-      else if (err === 'aborted') { /* stopped by us */ }
-      else if (err === 'not-allowed' || err === 'service-not-allowed') {
+      if (err === 'no-speech') return;
+      if (err === 'aborted') return;
+      clearSilence();
+      setListeningUi(false);
+      if (err === 'not-allowed' || err === 'service-not-allowed') {
         say(tr('Mic ki permission nahi mili. Neeche likhkar entry kijiye.', 'मायक्रोफोनची परवानगी मिळाली नाही. खाली लिहा.', 'Microphone permission was denied. Please type below.'));
         showFallback();
       } else if (err === 'network') {
@@ -680,17 +688,35 @@
         showFallback();
       } else recognitionFailed();
     };
-    rec.onend = function () { clearSilence(); setListeningUi(false); };
+    rec.onend = function () {
+      if (!listening || rec !== current) return;
+      restartTimer = setTimeout(function () {
+        if (!listening || rec !== current) return;
+        try { current.start(); }
+        catch (e) { clearSilence(); setListeningUi(false); recognitionFailed(); }
+      }, 250);
+    };
     try { rec.start(); }
-    catch (e) { setListeningUi(false); recognitionFailed(); }
+    catch (e) { clearSilence(); setListeningUi(false); recognitionFailed(); }
   }
 
   function stopListening(abort) {
     clearSilence();
+    clearTimeout(restartTimer);
+    if (!listening) return;
+    setListeningUi(false);
     if (rec) {
       try { if (abort) rec.abort(); else rec.stop(); } catch (e) { /* already stopped */ }
     }
-    setListeningUi(false);
+    var transcript = (speechText + ' ' + speechInterim).trim();
+    if (!transcript) {
+      say(tr('Boliye, main sun raha hoon.', 'बोला, मी ऐकत आहे.', 'Please speak; I am listening.'));
+    } else if (speechConfidence < MIN_CONFIDENCE) {
+      recognitionFailed();
+    } else {
+      $('noiseHint').classList.remove('strong');
+      handle(transcript);
+    }
   }
 
   function showFallback() {
@@ -855,7 +881,7 @@
     mid.appendChild(el('div', 'what', e.type === 'expense' ? catSay(e.category) : (it ? itemSay(it) : e.itemId)));
     if (e.type !== 'expense') mid.appendChild(el('div', 'qty', num(e.qty) + ' ' + (it ? it.unit : '')));
     row.appendChild(mid);
-    row.appendChild(el('div', 'amt', Calc.formatINR(e.amount)));
+    if (e.type !== 'adjustment') row.appendChild(el('div', 'amt', Calc.formatINR(e.amount)));
     return row;
   }
 
@@ -913,6 +939,125 @@
     return ul;
   }
 
+  function stockForm(kind) {
+    if (S.mode !== 'idle' || listening) {
+      return say(tr('Pehle maujooda entry poori karein.', 'आधीची नोंद पूर्ण करा.', 'Finish the current entry first.'));
+    }
+    var existing = $('stockForm');
+    if (existing) existing.remove();
+    var form = el('form', 'stock-form');
+    form.id = 'stockForm';
+    form.appendChild(el('h3', '', kind === 'new'
+      ? tr('Nayi cheez', 'नवीन वस्तू', 'New item')
+      : kind === 'purchase' ? tr('Maal aaya', 'माल खरेदी', 'Add purchased stock')
+      : tr('Stock ginti sudharein', 'साठ्याची संख्या बदला', 'Correct counted stock')));
+    function field(id, label, type, min, step) {
+      var lab = el('label', '', label);
+      lab.htmlFor = id;
+      var input = el('input');
+      input.id = id;
+      input.type = type;
+      input.required = true;
+      if (min != null) input.min = min;
+      if (step) input.step = step;
+      form.appendChild(lab);
+      form.appendChild(input);
+      return input;
+    }
+    var name, unit, buy, sell, choice, quantity;
+    if (kind === 'new') {
+      name = field('stockName', tr('Cheez ka naam', 'वस्तूचे नाव', 'Item name'), 'text');
+      name.maxLength = 60;
+      var unitLabel = el('label', '', tr('Matra ki ikai', 'एकक', 'Unit'));
+      unitLabel.htmlFor = 'stockUnit';
+      form.appendChild(unitLabel);
+      unit = el('select');
+      unit.id = 'stockUnit';
+      ['kg', 'litre', 'packet', 'piece'].forEach(function (value) {
+        var option = el('option', '', value);
+        option.value = value;
+        unit.appendChild(option);
+      });
+      form.appendChild(unit);
+      buy = field('stockBuy', tr('Khareed daam prati ikai (₹)', 'प्रति एकक खरेदी किंमत (₹)', 'Buying price per unit (₹)'), 'number', '0', '0.01');
+      sell = field('stockSell', tr('Bikri daam prati ikai (₹)', 'प्रति एकक विक्री किंमत (₹)', 'Selling price per unit (₹)'), 'number', '0.01', '0.01');
+    } else {
+      var choiceLabel = el('label', '', tr('Cheez', 'वस्तू', 'Item'));
+      choiceLabel.htmlFor = 'stockItem';
+      form.appendChild(choiceLabel);
+      choice = el('select');
+      choice.id = 'stockItem';
+      db.items.filter(function (it) { return !it.service; }).forEach(function (it) {
+        var option = el('option', '', it.name + ' (' + unitSay(it) + ')');
+        option.value = it.id;
+        choice.appendChild(option);
+      });
+      if (!choice.options.length) {
+        return say(tr('Pehle nayi cheez jodein.', 'आधी नवीन वस्तू जोडा.', 'Add an item first.'));
+      }
+      form.appendChild(choice);
+    }
+    if (kind !== 'purchase') {
+      quantity = field('stockQuantity', kind === 'new'
+        ? tr('Shuru ka stock', 'सुरुवातीचा साठा', 'Starting stock')
+        : tr('Abhi gina hua stock', 'आता मोजलेला साठा', 'Stock counted now'), 'number', '0', '0.001');
+      quantity.max = '10000';
+    }
+    var actions = el('div', 'actions');
+    var submit = el('button', 'btn primary', kind === 'purchase'
+      ? tr('Aage', 'पुढे', 'Continue') : tr('Save', 'जतन करा', 'Save'));
+    submit.type = 'submit';
+    actions.appendChild(submit);
+    actions.appendChild(button('', tr('Cancel', 'रद्द करा', 'Cancel'), function () { form.remove(); }));
+    form.appendChild(actions);
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (S.mode !== 'idle' || listening) return say(tr('Pehle entry poori karein.', 'आधी नोंद पूर्ण करा.', 'Finish the current entry first.'));
+      if (kind === 'purchase') {
+        S.cards = [{ type: 'purchase', itemId: choice.value, qty: null, amount: null }];
+        return proceed();
+      }
+      var count = Number(quantity.value);
+      if (!Number.isFinite(count) || count < 0 || count > 10000) {
+        return say(tr('Sahi stock matra daaliye.', 'योग्य साठा संख्या द्या.', 'Enter a valid stock quantity.'));
+      }
+      var beforeChange = Data.clone(db);
+      if (kind === 'new') {
+        var itemName = name.value.trim();
+        var buying = Number(buy.value), selling = Number(sell.value);
+        if (!itemName || !Parser.normalize(itemName) || !Number.isFinite(buying) || buying < 0 ||
+            !Number.isFinite(selling) || selling <= 0 ||
+            db.items.some(function (it) {
+              return (it.aliases || []).concat([it.name, it.say]).some(function (alias) {
+                return Parser.normalize(alias) === Parser.normalize(itemName);
+              });
+            })) {
+          return say(tr('Alag naam aur sahi daam daaliye.', 'वेगळे नाव आणि योग्य किंमत द्या.', 'Enter a unique name and valid prices.'));
+        }
+        if (!window.confirm(tr('Nayi cheez aur shuru ka stock save karein?', 'नवीन वस्तू आणि सुरुवातीचा साठा जतन करायचा?', 'Save this new item and starting stock?'))) return;
+        var id;
+        do { id = 'custom' + db.nextId++; } while (itemById(id));
+        db.items.push({ id: id, name: itemName, say: itemName, unit: unit.value,
+          buy: Calc.round2(buying), sell: Calc.round2(selling), opening: Calc.round3(count),
+          low: 5, aliases: [itemName] });
+      } else {
+        var it = itemById(choice.value);
+        if (!it || it.service) return say(tr('Cheez nahi mili.', 'वस्तू सापडली नाही.', 'Item not found.'));
+        var previous = stock()[it.id];
+        if (!window.confirm(tr(it.name + ' ka stock ' + num(previous) + ' se ' + num(count) + ' karein?',
+          it.name + ' चा साठा ' + num(previous) + ' वरून ' + num(count) + ' करायचा?',
+          'Change ' + it.name + ' stock from ' + num(previous) + ' to ' + num(count) + '?'))) return;
+        db.entries.push({ id: 'e' + db.nextId++, ts: Date.now(), type: 'adjustment',
+          itemId: it.id, qty: Calc.stockAdjustment(previous, count) });
+      }
+      if (!persist()) { db = beforeChange; return; }
+      render();
+      say(tr('Stock save ho gaya.', 'साठा जतन झाला.', 'Stock saved.'));
+    });
+    $('stockControls').appendChild(form);
+    (name || choice).focus();
+  }
+
   function renderPanel() {
     var p = $('panel');
     p.innerHTML = '';
@@ -926,6 +1071,12 @@
       p.appendChild(totalBox(tr('Aaj ka kharcha', 'आजचा खर्च', 'Today’s expenses'), Calc.formatINR(Calc.totalExpenses(tE))));
       p.appendChild(listOf(ex, tr('Aaj koi kharcha nahi.', 'आज खर्च नाही.', 'No expenses today.')));
     } else if (S.tab === 'stock') {
+      var controls = el('div', 'stock-controls');
+      controls.id = 'stockControls';
+      controls.appendChild(button('', tr('Nayi cheez jodein', 'नवीन वस्तू जोडा', 'Add new item'), function () { stockForm('new'); }));
+      controls.appendChild(button('', tr('Maal khareeda', 'माल खरेदी', 'Add purchased stock'), function () { stockForm('purchase'); }));
+      controls.appendChild(button('', tr('Stock sudharein', 'साठा दुरुस्त करा', 'Correct stock count'), function () { stockForm('adjust'); }));
+      p.appendChild(controls);
       var lv = stock();
       var ul = el('ul', 'list');
       db.items.forEach(function (it) {
@@ -961,6 +1112,24 @@
       });
       p.appendChild(t);
       p.appendChild(el('p', 'formula', tr('Munafa = Bikri − bechi cheezon ki khareed keemat − kharcha. Maal kharidna (stock) munafa tab ghatata hai jab woh bikta hai.', 'नफा = विक्री − विकलेल्या मालाची खरेदी किंमत − खर्च. माल विकल्यावर त्याची खरेदी किंमत वजा होते.', 'Profit = sales − cost of goods sold − expenses. Stock purchases affect profit when the items are sold.')));
+      p.appendChild(el('h3', '', tr('Aaj har cheez ka munafa', 'आज प्रत्येक वस्तूचा नफा', 'Today’s profit by item')));
+      p.appendChild(el('p', 'formula', tr('Aaj ka kharcha har cheez ki bikri ke anupaat mein baanta hai.', 'आजचा खर्च प्रत्येक वस्तूच्या विक्रीच्या प्रमाणात वाटला आहे.', 'Today’s expenses are allocated in proportion to each item’s sales.')));
+      var itemRows = Calc.itemProfits(tE, db.items);
+      if (!itemRows.length) p.appendChild(el('p', 'empty', tr('Aaj koi bikri nahi; kharcha kisi cheez ko nahi baanta.', 'आज विक्री नाही; खर्च वाटलेला नाही.', 'No sales today; expenses are not allocated to items.')));
+      else {
+        var itemList = el('ul', 'item-profits');
+        itemRows.forEach(function (row) {
+          var item = itemById(row.itemId);
+          var li = el('li');
+          li.appendChild(el('strong', '', item ? item.name : row.itemId));
+          li.appendChild(el('span', '', tr('Bikri ', 'विक्री ', 'Sales ') + Calc.formatINR(row.sales) +
+            ' · ' + tr('Khareed ', 'खरेदी ', 'Cost ') + Calc.formatINR(row.cost) +
+            ' · ' + tr('Kharcha ', 'खर्च ', 'Expenses ') + Calc.formatINR(row.expenses)));
+          li.appendChild(el('strong', '', tr('Munafa ', 'नफा ', 'Profit ') + Calc.formatINR(row.profit)));
+          itemList.appendChild(li);
+        });
+        p.appendChild(itemList);
+      }
       p.appendChild(el('h3', '', tr('Pichhle 7 din', 'मागील ७ दिवस', 'Last 7 days')));
       var ul7 = el('ul', 'list');
       Calc.dailyHistory(db.entries, db.items, Date.now(), 7).forEach(function (d) {
@@ -986,6 +1155,7 @@
   function typeLabel(type) {
     if (type === 'sale') return tr('Bikri', 'विक्री', 'Sale');
     if (type === 'purchase') return tr('Maal aaya', 'खरेदी', 'Purchase');
+    if (type === 'adjustment') return tr('Stock badla', 'साठा बदल', 'Adjustment');
     return tr('Kharcha', 'खर्च', 'Expense');
   }
 
@@ -1004,8 +1174,18 @@
     $('setupBtn').textContent = tr('🏪 Dukaan setup (bolkar)', '🏪 दुकान सेटअप', '🏪 Set up shop');
     $('resetBtn').textContent = tr('Sample data wapas', 'नमुना डेटा परत आणा', 'Reset sample data');
     $('syncTitle').textContent = tr('Account aur sync', 'खाते आणि सिंक', 'Account and sync');
+    $('syncAlert').textContent = tr('Sync ruka hai: phone aur account ka data dekhein.',
+      'सिंक थांबले आहे: फोन आणि खात्यावरील माहिती तपासा.',
+      'Sync paused: review the account and phone versions.');
+    $('welcomeMessage').textContent = tr('Sync ke liye sign in karein, ya phone par bina account ke jari rakhein.',
+      'सिंकसाठी साइन इन करा किंवा खात्याशिवाय फोनवर वापरा.',
+      'Sign in to sync, or continue with data on this device.');
+    $('continueLocal').textContent = window.ShopSync && ShopSync.isActive()
+      ? tr('App kholein (account sync ho sakta hai)', 'अॅप उघडा (खाते सिंक होऊ शकते)', 'Continue to app (account may sync)')
+      : tr('Bina sign in ke jari rakhein', 'साइन इन न करता पुढे जा', 'Continue without signing in');
     $('syncUserLabel').textContent = tr('Username', 'वापरकर्ता नाव', 'Username');
     $('syncPasswordLabel').textContent = tr('Password (kam se kam 10 akshar)', 'पासवर्ड (किमान १० अक्षरे)', 'Password (at least 10 characters)');
+    renderPasswordToggle();
     $('syncLogin').textContent = tr('Sign in', 'साइन इन', 'Sign in');
     $('syncRegister').textContent = tr('Account banayein', 'खाते तयार करा', 'Create account');
     $('syncLogout').textContent = tr('Sign out', 'साइन आउट', 'Sign out');
@@ -1035,6 +1215,14 @@
     setListeningUi(listening);
   }
 
+  function renderPasswordToggle() {
+    var label = $('syncPassword').type === 'password'
+      ? tr('Password dikhayein', 'पासवर्ड दाखवा', 'Show password')
+      : tr('Password chhupayein', 'पासवर्ड लपवा', 'Hide password');
+    $('togglePassword').setAttribute('aria-label', label);
+    $('togglePassword').title = label;
+  }
+
   function renderSettings() {
     var tpl = Data.TEMPLATES[db.settings.template] || Data.TEMPLATES.kirana;
     $('shopName').textContent = tr('Template: ', 'साचा: ', 'Template: ') + tpl.label + ' · ' + db.items.length +
@@ -1059,8 +1247,29 @@
     $('offlineBadge').hidden = navigator.onLine !== false;
   }
 
+  function openApp() {
+    if ($('welcomeScreen').hidden) return;
+    $('syncPassword').value = '';
+    $('syncPassword').type = 'password';
+    $('togglePassword').setAttribute('aria-pressed', 'false');
+    renderPasswordToggle();
+    $('syncHome').appendChild($('syncSection'));
+    $('welcomeScreen').hidden = true;
+    $('appHeader').hidden = false;
+    $('appMain').hidden = false;
+    if (S.mode === 'language') say('Aap kaunsi bhasha mein baat karenge? Hindi, Marathi, English ya Tamil?');
+    else setReply(tr('Namaste! Mic dabakar boliye.', 'नमस्कार! माइक दाबून बोला.', 'Hello! Tap the microphone to speak.'));
+    $('mic').focus();
+    setTimeout(function () { checkEvening(/[?&]evening=1\b/.test(location.search)); }, 1500);
+  }
+
   // ---------- wiring ----------
   function init() {
+    $('welcomeSync').appendChild($('syncSection'));
+    $('welcomeScreen').hidden = false;
+    $('appHeader').hidden = true;
+    $('appMain').hidden = true;
+    $('continueLocal').addEventListener('click', openApp);
     $('lang').value = db.settings.lang || 'hi-IN';
     $('lang').addEventListener('change', function () {
       db.settings.lang = this.value;
@@ -1119,11 +1328,10 @@
 
     persist(false);
     render();
-    if (S.mode === 'language') say('Aap kaunsi bhasha mein baat karenge? Hindi, Marathi, English ya Tamil?');
-    else setReply(tr('Namaste! Mic dabakar boliye.', 'नमस्कार! माइक दाबून बोला.', 'Hello! Tap the microphone to speak.'));
-
     ShopSync.init({
       get: function () { return db; },
+      onAuthenticated: openApp,
+      onSessionChange: renderLanguage,
       canReplace: function () { return S.mode === 'idle' && !listening; },
       replace: function (snapshot) {
         if (!snapshot || !Array.isArray(snapshot.items) || !Array.isArray(snapshot.entries) || !snapshot.settings) {
@@ -1136,10 +1344,9 @@
         render();
       }
     });
+    renderLanguage();
 
-    setInterval(function () { checkEvening(false); }, 60000);
-    var forceEvening = /[?&]evening=1\b/.test(location.search);
-    setTimeout(function () { checkEvening(forceEvening); }, 1500);
+    setInterval(function () { if ($('welcomeScreen').hidden) checkEvening(false); }, 60000);
 
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       navigator.serviceWorker.register('sw.js').catch(function () { /* offline cache is optional */ });
@@ -1147,7 +1354,7 @@
   }
 
   // Exposed for manual testing from the browser console.
-  window.MeriDukaan = { handle: handle, state: S, db: function () { return db; }, evening: function () { checkEvening(true); } };
+  window.MeriDukaan = { handle: handle, state: S, db: function () { return db; }, evening: function () { checkEvening(true); }, renderPasswordToggle: renderPasswordToggle };
 
   init();
 })();

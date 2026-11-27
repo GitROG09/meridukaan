@@ -52,7 +52,7 @@ The tests use Node's built-in `assert` (no npm install). Sync tests require Node
 
 ## Optional account sync
 
-Use **Account and sync** in Settings to create a shop username and password (at least 10 characters), or sign in on another device. No account is needed for local use. The first sign-in to an existing account asks which complete version to keep if local data and account data both exist. Offline changes remain on the device and sync when connected. When both versions changed, sync pauses and asks you to choose; the other complete version will be replaced, not merged. Review the versions carefully before choosing.
+The welcome screen offers sign-in, account creation and continuing without signing in. Use **Account and sync** in Settings to sign in later. No account is needed for local use. If an existing account session is active, the continue button indicates that it may sync. The first sign-in to an existing account asks which complete version to keep if local data and account data both exist. Offline changes remain on the device and sync when connected. When both versions changed, sync pauses and asks you to choose; the other complete version will be replaced, not merged. Review the versions carefully before choosing.
 
 The sync API is served by Docker at the same origin as the app. A static host alone cannot provide sync. For an internet deployment, use HTTPS and set `SECURE_COOKIES=true` in the Compose environment; browser sign-in requires HTTPS or localhost. This prototype has no password reset, account recovery, automatic backup, or production security audit. Keep backups of the Docker volume and do not use real business data until the deployment has been secured and tested. Voice recognition may send audio to the browser provider's service.
 
@@ -87,6 +87,9 @@ The rest of the screen:
 - **Mic:** one large tap-to-talk button. The mic never listens on its own.
 - **Feedback:** a live transcript line, a reply line that is also spoken (speechSynthesis) with a 🔁 replay button, and a typed fallback.
 - **Tabs:** Sales / Expenses / Stock / Profit.
+- **Stock tab:** add custom items, record purchases, or correct the quantity counted on the shelf. Confirm each change. Confirmed sales automatically reduce stock; purchases increase it. Corrections can be undone as ledger entries.
+- **Profit tab:** today's per-item profit subtracts the buying cost captured when sold and allocates today's shop expenses in proportion to each item's sales value (rounded to paise). With no sales, expenses remain in total profit but are not assigned to items.
+- **Account password:** use the show/hide button when entering a password.
 - **Accessibility:** buttons are at least 48 px with high contrast, and amounts use ₹ with Indian grouping (₹1,20,000).
 - **Language selector:** sets the recognition locale (`hi-IN`, `mr-IN`, `ta-IN`, `en-IN`). One item matches across languages: *rice / chawal / tandul / arisi / चावल / அரிசி* are the same item.
 - **First launch:** choose a language by saying its name or tapping a language button. Some browsers block the initial spoken question until a user gesture; it is also shown on screen and can be replayed.
@@ -101,7 +104,7 @@ The rest of the screen:
 | Misheard item ("chaval") | Top 3 candidates shown as buttons: "Chawal ya chana?". The app never guesses |
 | Missing quantity or amount | Asks "Kitne kilo?" / "Kitne rupaye?". Nothing is saved without confirmation |
 | Implausible amount (₹3,00,000 for 5 kg rice) | Warns and asks again. Saying the same value again accepts it |
-| 8 s of silence | Stops listening and shows "Boliye, main sun raha hoon." |
+| 8 s of silence | Stops listening and processes any recognized speech; if nothing was heard, shows "Boliye, main sun raha hoon." Tap the mic again to finish sooner. Some browsers may end recognition early. |
 | Mic permission denied / no internet for recognition | Explains the problem and points to the typed input |
 | Offline | Data is always in `localStorage`; an offline badge is shown. A service worker caches the app shell |
 
@@ -126,7 +129,7 @@ server/server.js  account and SQLite snapshot API (Node.js)
 - **Arithmetic only happens in `calc.js`.**
   - Profit = sales − buying cost of the items sold − expenses.
   - The buying cost is snapshotted on each sale.
-  - Stock = opening + purchases − sales. It is derived from the entries each time, so undo is always consistent.
+  - Stock = opening + purchases − sales + stock corrections. It is derived from the entries each time, so undoing a stock entry restores the previous count.
   - No AI model ever does arithmetic.
 - **Parsing is fully rule-based.** It uses keyword sets per language, number words (Hindi/Marathi/Tamil/English, including lakh/hazaar/sau and dedh/dhai/sawa/saade/paune), unit words with conversion (gram→kg, dozen→12), and Levenshtein fuzzy matching that only *suggests* candidates.
 - **Data model.** Entries are `{type: sale|purchase|expense, itemId, qty, amount, unitCost, category, ts}`, stored under the `localStorage` key `meridukaan.v1`. Use "Sample data wapas" to reset.
@@ -135,7 +138,7 @@ server/server.js  account and SQLite snapshot API (Node.js)
 
 - Speech recognition uses the browser's Web Speech API. It needs Chrome, a secure context (localhost/HTTPS) and usually internet; accuracy for Marathi and Tamil varies by device.
 - Main spoken replies support Hinglish, Marathi and English. Some secondary controls and sync messages remain in English or Hinglish. Tamil recognition remains available, but replies fall back to Hinglish. Device voice availability varies.
-- Setup chooses from 4 fixed templates (kirana, sabzi, tailor, food stall). It can filter items and set each item's unit and buying price, but cannot add new items by voice. To set multiple values, name each item and separate them with "aur", "and", "आणि" or commas.
+- Setup chooses from 4 fixed templates (kirana, sabzi, tailor, food stall). It can filter items and set each item's unit and buying price, but cannot add new items by voice. Add custom items through the Stock tab. To set multiple values during setup, name each item and separate them with "aur", "and", "आणि" or commas.
 - Starting a new setup requires confirmation because it replaces existing entries, including synced data. The new shop starts with zero stock; enter existing stock as purchases. The initial demonstration shop still has sample stock.
 - Corrections can change the amount, quantity or item. Changing the entry *type* by voice means cancelling and speaking again.
 - When one total is given for several items (for example "dono saath mein 280"), the app asks for each item's amount separately rather than guessing how to split it.
