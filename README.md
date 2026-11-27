@@ -34,6 +34,7 @@ If voice isn't available, the typed-input box works everywhere.
 ```bash
 node tests/tests.js
 node tests/sync-tests.js
+node tests/static-tests.js
 ```
 
 The tests use Node's built-in `assert` (no npm install). Sync tests require Node 22.11 or newer with built-in SQLite. They cover:
@@ -47,12 +48,23 @@ The tests use Node's built-in `assert` (no npm install). Sync tests require Node
 - yes/no and correction replies (`nahi, 400 hai`)
 - profit and stock calculations, Indian number formatting, and template matching
 - account authentication, stored snapshots, stale revision rejection and sign-out
+- static deployment assets, API routing, secure cookies and required volume configuration
 
 ## Optional account sync
 
 Use **Account and sync** in Settings to create a shop username and password (at least 10 characters), or sign in on another device. No account is needed for local use. The first sign-in to an existing account asks which complete version to keep if local data and account data both exist. Offline changes remain on the device and sync when connected. When both versions changed, sync pauses and asks you to choose; the other complete version will be replaced, not merged. Review the versions carefully before choosing.
 
 The sync API is served by Docker at the same origin as the app. A static host alone cannot provide sync. For an internet deployment, use HTTPS and set `SECURE_COOKIES=true` in the Compose environment; browser sign-in requires HTTPS or localhost. This prototype has no password reset, account recovery, automatic backup, or production security audit. Keep backups of the Docker volume and do not use real business data until the deployment has been secured and tested. Voice recognition may send audio to the browser provider's service.
+
+### Railway demo deployment
+
+The root `Dockerfile` runs one service for the app and sync; it does not change the local Compose setup. Use this only for an experimental demo with synthetic data.
+
+1. Push the latest changes to GitHub. Create a Railway account and choose **New Project → Deploy from GitHub repo**. Grant access only to the repository needed, if the authorization screen permits it.
+2. Railway builds the root `Dockerfile`. Add a volume to the service with mount path `/data`. The service deliberately fails to start until the volume is attached; deploy or redeploy after attaching it. Railway supplies `RAILWAY_VOLUME_MOUNT_PATH` automatically.
+3. In the service settings, under **Networking → Public Networking**, select **Generate Domain**. Open the HTTPS domain and test the app and optional account sync with sample data. The Dockerfile sets secure cookies, serves the static app and stores the SQLite database on the volume; Railway supplies the listening `PORT`.
+
+Railway's [free plan](https://docs.railway.com/pricing/free-plan) has limited monthly usage, sleeps when idle, and stops services if the allowance runs out. New accounts start on a time-limited trial; after it ends, switch to Free and redeploy. Railway also documents trial-volume deletion after credit expiration; check its current retention terms and export backups. Availability and free-tier terms can change. This deployment and sync have not been independently security-audited; don't use real business data.
 
 ## Features
 
@@ -130,6 +142,7 @@ server/server.js  account and SQLite snapshot API (Node.js)
 - When a quantity is said without a unit, the app uses the configured template unit and displays it on the confirmation card; check it before saving.
 - The 8 pm prompt requires the app to be open. Browsers may block speech output until the user has tapped the page; the on-screen prompt still appears.
 - Local data can be lost when browser data is cleared. Account sync is optional and is not a substitute for server backups.
+- Undoing a stock purchase restores derived stock but does not restore the item's previous buying price; check the price before later sales.
 - Avoid editing the same local shop in multiple tabs at once; each tab holds its own in-memory copy.
 - The PWA icon is an SVG, so some Android versions may show a generic install icon.
 - Accents and very noisy shops can still defeat recognition. The quick-pick buttons and typed input are the fallback.

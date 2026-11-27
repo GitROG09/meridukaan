@@ -7,6 +7,11 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const directory = process.env.DATA_DIR || path.join(__dirname, 'data');
+if (process.env.REQUIRE_DATA_VOLUME === 'true' &&
+    (!process.env.RAILWAY_VOLUME_MOUNT_PATH ||
+     path.resolve(process.env.RAILWAY_VOLUME_MOUNT_PATH) !== path.resolve(directory))) {
+  throw new Error('Attach a Railway volume at DATA_DIR before starting the service.');
+}
 fs.mkdirSync(directory, { recursive: true });
 const database = new DatabaseSync(path.join(directory, 'shops.sqlite'));
 database.exec(`
@@ -25,6 +30,41 @@ const MAX_BODY = 2 * 1024 * 1024;
 const attempts = new Map();
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const passwordHash = (password, salt) => crypto.scryptSync(password, salt, 64).toString('hex');
+const publicDirectory = path.join(__dirname, '..', 'public');
+const staticFiles = {
+  '/': ['index.html', 'text/html; charset=utf-8'],
+  '/index.html': ['index.html', 'text/html; charset=utf-8'],
+  '/css/style.css': ['css/style.css', 'text/css; charset=utf-8'],
+  '/config.js': ['config.js', 'text/javascript; charset=utf-8'],
+  '/manifest.json': ['manifest.json', 'application/manifest+json; charset=utf-8'],
+  '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
+  '/js/calc.js': ['js/calc.js', 'text/javascript; charset=utf-8'],
+  '/js/data.js': ['js/data.js', 'text/javascript; charset=utf-8'],
+  '/js/parser.js': ['js/parser.js', 'text/javascript; charset=utf-8'],
+  '/js/sync.js': ['js/sync.js', 'text/javascript; charset=utf-8'],
+  '/js/app.js': ['js/app.js', 'text/javascript; charset=utf-8']
+};
+
+function serveStatic(req, res, route) {
+  const file = Object.hasOwn(staticFiles, route) && staticFiles[route];
+  if (!file) return respond(res, 404, { error: 'Not found.' });
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return respond(res, 405, { error: 'Method not allowed.' }, { Allow: 'GET, HEAD' });
+  }
+  fs.readFile(path.join(publicDirectory, file[0]), (error, contents) => {
+    if (error) {
+      console.error('Static file error:', error);
+      return respond(res, 500, { error: 'Unable to load the app.' });
+    }
+    res.writeHead(200, {
+      'Content-Type': file[1],
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.end(req.method === 'HEAD' ? undefined : contents);
+  });
+}
 
 function respond(res, status, value, headers = {}) {
   res.writeHead(status, {
@@ -92,6 +132,9 @@ const server = http.createServer(async (req, res) => {
   try {
     if (!sameOrigin(req)) return respond(res, 403, { error: 'Cross-origin requests are not allowed.' });
     const route = new URL(req.url, 'http://localhost').pathname;
+    if (process.env.SERVE_STATIC === 'true' && route !== '/api' && !route.startsWith('/api/')) {
+      return serveStatic(req, res, route);
+    }
     if (req.method === 'POST' && (route === '/api/register' || route === '/api/login')) {
       if (rateLimited(req)) return respond(res, 429, { error: 'Too many attempts. Try again later.' });
       if (!(req.headers['content-type'] || '').startsWith('application/json')) return respond(res, 415, { error: 'JSON required.' });
