@@ -35,7 +35,7 @@
       <p id="noiseHint" class="hint">🔊 Shor hai? Phone munh ke paas rakhein · Noisy place? Move closer</p>
 
       <div class="line transcript" aria-live="polite">
-        <span class="lbl">Aapne kaha</span>
+        <span id="transcriptLabel" class="lbl">Aapne kaha</span>
         <span id="transcript" class="txt muted">—</span>
       </div>
       <div class="line reply" aria-live="assertive">
@@ -47,19 +47,24 @@
       <div id="cards" class="cards" aria-live="polite"></div>
 
       <div id="quickPick" class="quick" hidden>
-        <p class="quick-title">Tap karke chuniye</p>
+        <p id="quickTitle" class="quick-title">Tap karke chuniye</p>
         <div class="chips" id="quickTypes" role="group" aria-label="Entry type">
           <button type="button" data-type="sale" class="chip on">Bikri</button>
           <button type="button" data-type="purchase" class="chip">Maal aaya</button>
           <button type="button" data-type="expense" class="chip">Kharcha</button>
         </div>
         <div id="quickItems" class="grid"></div>
+        <form id="quickNumberForm" class="type-form">
+          <label class="sr" for="quickNumber">Number</label>
+          <input id="quickNumber" type="text" inputmode="decimal" placeholder="Number" enterkeyhint="send">
+          <button type="submit" class="btn primary">OK</button>
+        </form>
       </div>
 
       <form id="typeForm" class="type-form" autocomplete="off">
         <label class="sr" for="typeInput">Likhkar entry</label>
         <input id="typeInput" type="text" inputmode="text" placeholder="Ya yahan likhiye…" enterkeyhint="send">
-        <button type="submit" class="btn primary">Bhejo</button>
+        <button id="sendBtn" type="submit" class="btn primary">Bhejo</button>
       </form>
 
       <div class="shortcuts" role="group" aria-label="Jaldi sawaal">
@@ -78,13 +83,36 @@
     <section id="panel" class="panel" role="tabpanel"></section>
 
     <section class="settings" aria-label="Settings">
-      <h2>Dukaan settings</h2>
+      <h2 id="settingsTitle">Dukaan settings</h2>
       <p id="shopName" class="muted"></p>
       <div class="row">
         <button id="setupBtn" type="button" class="btn">🏪 Dukaan setup (bolkar)</button>
         <button id="resetBtn" type="button" class="btn danger">Sample data wapas</button>
       </div>
       <p id="aiStatus" class="muted small"></p>
+      <section id="syncSection" aria-label="Account and sync">
+        <h3 id="syncTitle">Account and sync</h3>
+        <p id="syncStatus" role="status">Local data only. Sign in to sync.</p>
+        <form id="syncForm" class="sync-form">
+          <label id="syncUserLabel" for="syncUser">Username</label>
+          <input id="syncUser" autocomplete="username" minlength="3" maxlength="32" required>
+          <label id="syncPasswordLabel" for="syncPassword">Password (at least 10 characters)</label>
+          <input id="syncPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+          <div class="row">
+            <button type="submit" id="syncLogin" class="btn">Sign in</button>
+            <button type="button" id="syncRegister" class="btn">Create account</button>
+          </div>
+        </form>
+        <button type="button" id="syncLogout" class="btn" hidden>Sign out</button>
+        <div id="syncConflict" hidden>
+          <p id="syncConflictPrompt">Data differs between this device and the account. Choose which complete version to keep. The other version will be replaced.</p>
+          <p id="syncConflictDetails"></p>
+          <div class="row">
+            <button type="button" id="syncKeepLocal" class="btn">Keep this device</button>
+            <button type="button" id="syncKeepRemote" class="btn">Keep account version</button>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -92,6 +120,7 @@
   <script src="js/calc.js"></script>
   <script src="js/data.js"></script>
   <script src="js/parser.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

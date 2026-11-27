@@ -67,7 +67,7 @@
     'पचास': 50, 'साठ': 60, 'सत्तर': 70, 'अस्सी': 80, 'नब्बे': 90, 'डेढ़': 1.5, 'डेढ': 1.5, 'ढाई': 2.5,
     'आधा': 0.5, 'आधी': 0.5,
     // Marathi (Devanagari)
-    'दोन': 2, 'पाच': 5, 'सहा': 6, 'दहा': 10, 'वीस': 20, 'पन्नास': 50, 'दोनशे': 200, 'तीनशे': 300,
+    'दोन': 2, 'पाच': 5, 'सहा': 6, 'दहा': 10, 'वीस': 20, 'चाळीस': 40, 'पन्नास': 50, 'दोनशे': 200, 'तीनशे': 300,
     'चारशे': 400, 'पाचशे': 500,
     // Tamil script
     'ஒன்று': 1, 'இரண்டு': 2, 'மூன்று': 3, 'நான்கு': 4, 'ஐந்து': 5, 'ஆறு': 6, 'ஏழு': 7, 'எட்டு': 8,
@@ -108,6 +108,9 @@
     tokens.forEach(function (t, i) {
       var digit = isDigits(t);
       var kind = null, v = null;
+      if (t === 'saath' && (tokens[i + 1] === 'mein' || tokens[i + 1] === 'me')) {
+        flush(); dropFraction(); out.push({ t: t }); return;
+      }
       var verbDo = DO_WORDS.has(t) && i > 0 && DO_VERBS.has(tokens[i - 1]) &&
         (i === tokens.length - 1 || !NUM.has(tokens[i + 1]) && !HUNDRED.has(tokens[i + 1]) && !UNITS.has(tokens[i + 1]));
       if (verbDo) { flush(); dropFraction(); out.push({ t: t }); return; }
@@ -215,7 +218,7 @@
     cancel: set(['cancel', 'rehne', 'rahne', 'chhodo', 'chodo', 'ruko', 'stop', 'radd', 'raddh', 'band',
       'रहने', 'छोड़ो', 'छोडो', 'रद्द', 'राहू']),
     skip: set(['sab', 'sabhi', 'saare', 'sare', 'all', 'everything', 'skip', 'sagla', 'sagle', 'sagli', 'ellam',
-      'ellaam', 'pata', 'malum', 'सब', 'सभी', 'सारे', 'सगळे', 'सगळं', 'पता', 'எல்லாம்']),
+      'ellaam', 'pata', 'malum', 'सब', 'सभी', 'सारे', 'सगळे', 'सगळं', 'सर्व', 'पता', 'எல்லாம்']),
     first: set(['pehla', 'pahla', 'pehle', 'pahila', 'first', 'pehlewala', 'पहला', 'पहिला', 'முதல்']),
     second: set(['doosra', 'dusra', 'doosre', 'dusri', 'dusara', 'second', 'दूसरा', 'दुसरा', 'இரண்டாவது']),
     third: set(['teesra', 'tisra', 'teesri', 'third', 'तीसरा', 'तिसरा', 'மூன்றாவது'])
@@ -529,7 +532,12 @@
       return { intent: 'report', cards: [] };
     }
     var cards = parseTransactions(toks, items);
-    if (cards.length) return { intent: 'transaction', cards: cards };
+    var sharedTotal = cards.length > 1 && /\b(?:dono|donon|both|together)\b|दोनों|दोन्ही/.test(normalize(text));
+    if (sharedTotal) cards.forEach(function (card) {
+      card.amount = null;
+      card.missing = missingFields(card);
+    });
+    if (cards.length) return { intent: 'transaction', cards: cards, sharedTotal: sharedTotal };
     return { intent: 'unknown', cards: [] };
   }
 
@@ -622,6 +630,20 @@
     return ids;
   }
 
+  // Setup values must be associated with an explicitly named item.
+  function parseSetupValues(text, items, field) {
+    var result = {};
+    var segments = normalize(text).split(/\s*(?:,|\baur\b|\band\b|\bani\b|\baani\b|और|आणि)\s*/);
+    segments.forEach(function (part) {
+      var ids = mentionedItems(part, items);
+      if (!ids.length && items.length === 1) ids = [items[0].id];
+      if (ids.length !== 1) return;
+      var value = field === 'unit' ? parseUnitWord(part) : parseNumber(part);
+      if (value != null && (field === 'unit' || value > 0)) result[ids[0]] = value;
+    });
+    return result;
+  }
+
   // Picks the fixed template whose keywords best match the shop description.
   function matchTemplate(text, templates) {
     var toks = tokenize(text);
@@ -658,6 +680,7 @@
     isSkip: isSkip,
     pickCandidate: pickCandidate,
     mentionedItems: mentionedItems,
+    parseSetupValues: parseSetupValues,
     matchTemplate: matchTemplate
   };
 });

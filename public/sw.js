@@ -1,8 +1,8 @@
 /* MeriDukaan service worker: caches the app shell so it opens without internet. */
-var CACHE = 'meridukaan-v1';
+var CACHE = 'meridukaan-v2';
 var ASSETS = [
   './', './index.html', './css/style.css', './config.js', './manifest.json', './icon.svg',
-  './js/calc.js', './js/data.js', './js/parser.js', './js/app.js'
+  './js/calc.js', './js/data.js', './js/parser.js', './js/sync.js', './js/app.js'
 ];
 
 self.addEventListener('install', function (e) {
@@ -17,7 +17,8 @@ self.addEventListener('activate', function (e) {
 
 // Network first (fresh code when online), cache fallback when offline.
 self.addEventListener('fetch', function (e) {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== self.location.origin) return;
+  var url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   e.respondWith(
     fetch(e.request, { cache: 'no-cache' }).then(function (res) {
       var copy = res.clone();

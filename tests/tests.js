@@ -45,6 +45,15 @@ test('"hata do" does not read "do" as 2', function () {
 test('"do kilo" still reads 2', function () {
   assert.strictEqual(Parser.parseNumber('do kilo'), 2);
 });
+test('setup associates units and prices with named items', function () {
+  var items = ITEMS.filter(function (i) { return i.id === 'rice' || i.id === 'biscuit'; });
+  assert.deepStrictEqual(Parser.parseSetupValues('chawal kilo aur biscuit packet', items, 'unit'), { rice: 'kg', biscuit: 'packet' });
+  assert.deepStrictEqual(Parser.parseSetupValues('chawal 40, biscuit 8', items, 'price'), { rice: 40, biscuit: 8 });
+  assert.deepStrictEqual(Parser.parseSetupValues('तांदूळ चाळीस आणि बिस्किट आठ', items, 'price'), { rice: 40, biscuit: 8 });
+  assert.equal(Parser.isSkip('सर्व'), true);
+  assert.deepStrictEqual(Parser.parseSetupValues('40', items, 'price'), {});
+  assert.deepStrictEqual(Parser.parseSetupValues('40', [items[0]], 'price'), { rice: 40 });
+});
 test('"saade teen kilo chawal paune do sau" -> 3.5 kg, ₹175', function () {
   var c = one('saade teen kilo chawal paune do sau rupaye mein beche');
   assert.strictEqual(c.qty, 3.5);
@@ -120,6 +129,14 @@ test('"stock aaya" with item -> purchase', function () {
 });
 
 section('Multiple items in one sentence');
+test('a shared total is not guessed as an individual item amount', function () {
+  var r = Parser.parse('do kilo cheeni aur ek tel, dono saath mein 280', ITEMS);
+  assert.equal(r.sharedTotal, true);
+  assert.equal(r.cards.length, 2);
+  assert.deepStrictEqual(r.cards.map(function (card) { return card.amount; }), [null, null]);
+  assert.deepStrictEqual(r.cards.map(function (card) { return card.qty; }), [2, 1]);
+  assert.equal(Parser.parseNumber('saath rupaye'), 60);
+});
 test('two items -> two sale cards', function () {
   var r = Parser.parse('do kilo cheeni sau rupaye aur teen packet biscuit tees rupaye mein beche', ITEMS);
   assert.strictEqual(r.intent, 'transaction');

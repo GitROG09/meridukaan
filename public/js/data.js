@@ -158,7 +158,7 @@
       version: 1,
       items: clone(tpl.items),
       entries: withSamples && tpl.id === 'kirana' ? sampleEntries(now) : [],
-      settings: { lang: 'hi-IN', template: tpl.id, setupDone: false, eveningAsked: null },
+      settings: { lang: 'hi-IN', languageChosen: false, template: tpl.id, setupDone: false, eveningAsked: null },
       nextId: 1
     };
   }

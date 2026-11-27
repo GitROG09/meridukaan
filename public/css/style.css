@@ -80,6 +80,9 @@ main { max-width: 640px; margin: 0 auto; padding: .75rem; }
   .line .txt { order: 3; flex-basis: 100%; }
 }
 .icon-btn { min-width: 48px; min-height: 48px; border: 0; background: transparent; font-size: 1.3rem; }
+.sync-form { display: grid; gap: .5rem; }
+.sync-form input { min-height: 48px; width: 100%; padding: .5rem; font: inherit; }
+#syncConflict { border: 2px solid #a34a00; border-radius: .75rem; padding: .75rem; margin-top: .75rem; }
 
 /* confirmation cards */
 .cards:empty { display: none; }
