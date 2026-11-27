@@ -1,0 +1,15 @@
+{
+  "name": "MeriDukaan - bolkar hisaab",
+  "short_name": "MeriDukaan",
+  "description": "Voice-first sales, expense, stock and profit tracker for small shops",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5d1e",
+  "lang": "hi",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
